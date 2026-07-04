@@ -1,0 +1,23 @@
+# Environment
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Data & outputs
+data/
+output/
+*.pdf
+*.png
+!RareBoxLogo.png
+
+# OS / IDE
+.DS_Store
+.idea/
+.vscode/

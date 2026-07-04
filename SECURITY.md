@@ -2,20 +2,31 @@
 
 ## Supported Versions
 
-Use this section to tell people about which versions of your project are
-currently being supported with security updates.
-
-| Version | Supported          |
-| ------- | ------------------ |
-| 5.1.x   | :white_check_mark: |
-| 5.0.x   | :x:                |
-| 4.0.x   | :white_check_mark: |
-| < 4.0   | :x:                |
+| Version | Supported |
+| --- | --- |
+| 1.0.x | Yes |
+| < 1.0 | No |
 
 ## Reporting a Vulnerability
 
-Use this section to tell people how to report a vulnerability.
+If you discover a security issue in Meta Analyst, please report it privately:
 
-Tell them where to go, how often they can expect to get an update on a
-reported vulnerability, what to expect if the vulnerability is accepted or
-declined, etc.
+1. Do **not** open a public GitHub issue for security vulnerabilities.
+2. Contact the repository maintainer directly with:
+   - A description of the vulnerability
+   - Steps to reproduce
+   - Potential impact
+3. Allow reasonable time for a fix before public disclosure.
+
+## Security Practices
+
+- Store `OPENAI_API_KEY` and `APP_PASSWORD` only in `.env` or secure environment variables.
+- Never commit secrets, API keys, or client ad data to version control.
+- Rotate credentials if they may have been exposed.
+- Use strong, unique values for `APP_PASSWORD` in production deployments.
+
+## Data Handling
+
+- Uploaded Meta Ads reports are processed in-memory during the Streamlit session.
+- No persistent storage of uploaded files is configured by default.
+- Review your deployment environment for additional logging or caching behavior.
