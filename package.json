@@ -1,0 +1,10 @@
+{
+  "name": "meta-analyst",
+  "private": true,
+  "scripts": {
+    "dev:api": "uvicorn api.main:app --reload --port 8810",
+    "dev:web": "npm --prefix frontend run dev",
+    "build": "npm --prefix frontend run build",
+    "start": "uvicorn api.main:app --host 0.0.0.0 --port 8810"
+  }
+}

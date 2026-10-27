@@ -1,4 +1,5 @@
 import json
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -8,6 +9,7 @@ from meta_analyst.config import ANALYSIS_MODEL, CHAT_MODEL, CLI_MODEL
 
 
 def get_openai_client() -> OpenAI:
+    """Legacy OpenAI client for CLI; prefer providers.get_session_client in the UI."""
     from meta_analyst.config import OPENAI_API_KEY
 
     if not OPENAI_API_KEY:
@@ -15,20 +17,37 @@ def get_openai_client() -> OpenAI:
     return OpenAI(api_key=OPENAI_API_KEY)
 
 
-def llm_chart_insight(client: OpenAI, df: pd.DataFrame, chart_key: str) -> str | None:
+def _complete(client: Any, *, system: str, user: str, model: str | None = None) -> str:
+    """Call either a multi-provider LLMClient or a raw OpenAI client."""
+    if hasattr(client, "complete"):
+        return client.complete(system=system, user=user, model=model)
+
+    response = client.responses.create(
+        model=model or CHAT_MODEL,
+        input=[
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
+        ],
+    )
+    return (response.output_text or "").strip()
+
+
+def llm_chart_insight(client: Any, df: pd.DataFrame, chart_key: str) -> str | None:
     if chart_key == "objective_spend_pie":
+        if "objective" not in df.columns or "spend" not in df.columns:
+            return None
         data = df.groupby("objective")["spend"].sum().to_dict()
         title = "Spend Distribution by Objective"
     elif chart_key == "objective_roas":
-        data = (
-            df.groupby("objective")
-            .apply(lambda x: x["revenue"].sum() / x["spend"].sum())
-            .replace([np.inf, -np.inf], np.nan)
-            .fillna(0)
-            .to_dict()
-        )
+        if not {"objective", "revenue", "spend"}.issubset(df.columns):
+            return None
+        grouped = df.groupby("objective").agg(revenue=("revenue", "sum"), spend=("spend", "sum"))
+        grouped["roas"] = grouped["revenue"] / grouped["spend"].replace(0, np.nan)
+        data = grouped["roas"].replace([np.inf, -np.inf], np.nan).fillna(0).to_dict()
         title = "ROAS by Objective"
     elif chart_key == "scatter_spend_roas":
+        if not {"spend", "roas"}.issubset(df.columns):
+            return None
         data = {
             "spend_min": float(df["spend"].min()),
             "spend_max": float(df["spend"].max()),
@@ -37,6 +56,8 @@ def llm_chart_insight(client: OpenAI, df: pd.DataFrame, chart_key: str) -> str |
         }
         title = "Spend vs ROAS Relationship"
     elif chart_key == "ctr_heatmap":
+        if "campaign_name" not in df.columns or "ctr_calc" not in df.columns:
+            return None
         data = (
             df.groupby("campaign_name")["ctr_calc"]
             .mean()
@@ -59,22 +80,22 @@ Rules:
 - Keep it short and high signal only
 """
 
-    response = client.responses.create(
-        model=CHAT_MODEL,
-        input=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": json.dumps(data, indent=2)},
-        ],
+    return _complete(
+        client,
+        system=system_prompt,
+        user=json.dumps(data, indent=2, default=str),
+        model=CHAT_MODEL if not hasattr(client, "complete") else None,
     )
-    return response.output_text.strip()
 
 
-def llm_detailed_analysis(client: OpenAI, df: pd.DataFrame) -> str:
+def llm_detailed_analysis(client: Any, df: pd.DataFrame) -> str:
     camp_summary = (
         df.groupby("campaign_name")
         .agg({"spend": "sum", "revenue": "sum", "impressions": "sum", "roas": "mean"})
         .reset_index()
         .to_dict(orient="records")
+        if "campaign_name" in df.columns
+        else []
     )
     ads_data = df.sort_values("spend", ascending=False).head(200).to_dict(orient="records")
 
@@ -94,45 +115,56 @@ Return JSON like:
 
     user = f"""
 Campaign Summary:
-{json.dumps(camp_summary, indent=2)}
+{json.dumps(camp_summary, indent=2, default=str)}
 
 Top Ads:
-{json.dumps(ads_data, indent=2)}
+{json.dumps(ads_data, indent=2, default=str)}
 """
 
-    response = client.responses.create(
-        model=ANALYSIS_MODEL,
-        input=[
-            {"role": "system", "content": system},
-            {"role": "user", "content": user},
-        ],
+    return _complete(
+        client,
+        system=system,
+        user=user,
+        model=ANALYSIS_MODEL if not hasattr(client, "complete") else None,
     )
-    return response.output_text
 
 
-def llm_chat_answer(client: OpenAI, df: pd.DataFrame, user_input: str) -> str:
+def llm_chat_answer(
+    client: Any,
+    df: pd.DataFrame,
+    user_input: str,
+    *,
+    history: list[dict[str, str]] | None = None,
+) -> str:
     compact = {
         "campaign_summary": df.groupby("campaign_name")
         .agg({"spend": "sum", "revenue": "sum", "roas": "mean"})
         .reset_index()
-        .to_dict(orient="records"),
+        .to_dict(orient="records")
+        if "campaign_name" in df.columns
+        else [],
         "top_ads": df.sort_values("spend", ascending=False).head(100).to_dict(orient="records"),
     }
 
     system = """
 You are a senior Meta Ads performance strategist.
 Answer clearly, concisely, and with specific recommendations.
+Use the performance context and prior conversation when relevant.
 """
 
-    response = client.responses.create(
-        model=CHAT_MODEL,
-        input=[
-            {"role": "system", "content": system},
-            {"role": "user", "content": f"Context:\n{json.dumps(compact, indent=2)}"},
-            {"role": "user", "content": user_input},
-        ],
+    history_block = ""
+    if history:
+        lines = []
+        for msg in history[-8:]:
+            role = msg.get("role", "user")
+            lines.append(f"{role.upper()}: {msg.get('content', '')}")
+        history_block = "\nPrior conversation:\n" + "\n".join(lines) + "\n"
+
+    user = (
+        f"Context:\n{json.dumps(compact, indent=2, default=str)}\n"
+        f"{history_block}\nUser question: {user_input}"
     )
-    return response.output_text
+    return _complete(client, system=system, user=user)
 
 
 def call_cli_analysis(
@@ -159,10 +191,10 @@ Goals:
 Here is Meta Ads performance data for {date_info}.
 
 1) Campaign-level summary:
-{json.dumps(camp_summary, indent=2)}
+{json.dumps(camp_summary, indent=2, default=str)}
 
 2) Full ad-level data:
-{json.dumps(ads_data, indent=2)}
+{json.dumps(ads_data, indent=2, default=str)}
 
 Please:
 - Identify the best and worst performing campaigns and explain why.

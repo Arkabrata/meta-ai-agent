@@ -2,123 +2,91 @@
 
 **Turn Meta Ads exports into actionable insights in minutes.**
 
-Meta Analyst is an AI-powered analytics product for Meta (Facebook/Instagram) Ads. Upload a CSV or Excel export from Ads Manager, and get a KPI dashboard, chart-level AI insights, a strategy chat agent, and client-ready PDF reports — without manual spreadsheet work.
+Meta Analyst is an AI-powered analytics product for Meta (Facebook/Instagram) Ads. Connect the Marketing API or upload a CSV/Excel export, then explore a React KPI dashboard, chart-level AI insights, a strategy chat agent, and client-ready PDF reports.
 
 Built by **RareBox**.
 
 ---
 
-## Why Meta Analyst
+## Stack
 
-| Problem | Meta Analyst |
+| Layer | Tech |
 | --- | --- |
-| Raw Meta exports use inconsistent column names | Auto-detects and normalizes columns |
-| ROAS/CPC/CTR calculations are repetitive | Computes derived metrics instantly |
-| Performance reviews take hours | AI summarizes charts and prioritizes actions |
-| Recommendations live in Slack threads | Chat agent answers from your uploaded data |
-| Client reporting is manual | One-click PDF export with KPIs + insights |
-
----
-
-## Product Features
-
-### Dashboard
-- KPI cards: spend, revenue, impressions, clicks, ROAS, CPC, CPM, CTR, LPV rates
-- Spend share by objective, ROAS by objective, spend vs. ROAS scatter, CTR heatmap
-- Per-chart AI insight blocks with actionable recommendations
-
-### AI Analysis
-- **Detailed analysis** — prioritized HIGH / MEDIUM / LOW recommendations
-- **Strategy chat** — ask about scaling, pausing, budget shifts, and campaign health
-- **CLI batch mode** — run analysis from the terminal and export ad-level recommendations to CSV
-
-### Security
-- Password-protected access via `APP_PASSWORD`
-- API keys stored in `.env` (never committed)
+| Frontend | React + Vite + Recharts |
+| Backend | FastAPI (`api/main.py`) |
+| Core | `meta_analyst/` (data, Meta API, multi-LLM providers, PDF) |
 
 ---
 
 ## Quick Start
 
-### 1. Install
+### 1. Backend
 
 ```bash
-git clone <repo-url>
-cd meta-ai-agent
-python3 -m venv .venv
+python3.12 -m venv .venv   # 3.11/3.12 recommended
 source .venv/bin/activate
 pip install -r requirements.txt
-```
-
-### 2. Configure
-
-```bash
 cp .env.example .env
+# set APP_PASSWORD and at least one AI key
+uvicorn api.main:app --reload --port 8810
 ```
 
-Edit `.env`:
-
-```
-OPENAI_API_KEY=sk-your-key-here
-APP_PASSWORD=your-access-password
-```
-
-### 3. Run the app
+### 2. Frontend
 
 ```bash
-streamlit run app.py
+cd frontend
+npm install
+npm run dev
 ```
 
-Open `http://localhost:8501`, sign in, upload a Meta Ads report, then explore **Dashboard** and **AI Chat**.
+Open `http://localhost:5280`, sign in with `APP_PASSWORD`.
+
+Ports are set to **5280** (UI) and **8810** (API) so they don’t clash with other local apps on 5173/8000.
+
+### Production-style (API serves built UI)
+
+```bash
+cd frontend && npm run build && cd ..
+uvicorn api.main:app --host 0.0.0.0 --port 8810
+```
+Then open `http://localhost:8810`.
 
 ---
 
-## How It Works
+## Product Features
 
-```
-Meta Ads Export (CSV/XLSX)
-        │
-        ▼
-   Auto-clean & normalize
-        │
-        ├── KPI Dashboard + Charts
-        ├── AI insights per chart
-        ├── Detailed priority analysis
-        ├── Strategy chat
-        └── PDF report export
-```
+### Meta Reporting API
+- Connect with a Graph API **access token** (not Facebook password)
+- Select an ad account and date range
+- Pull live insights into the dashboard
 
-**Supported inputs:** Meta Ads Manager exports with columns such as Campaign name, Amount spent, Impressions, Clicks, Purchases conversion value, Objective, and Ad delivery status.
+### Dashboard
+- KPI cards: spend, revenue, impressions, clicks, ROAS, CPC, CPM, CTR, LPV rates
+- Spend by objective, ROAS by objective, spend vs ROAS, CTR by campaign
+- On-demand AI insight blocks + PDF export
 
-**Default currency:** INR (`₹`). Override with `META_CURRENCY` in `.env`.
+### AI Providers
+- OpenAI (ChatGPT), Anthropic (Claude), xAI (Grok), Gemini, or custom OpenAI-compatible
+- Keys stored per API session; optional `.env` fallbacks
 
----
-
-## CLI Usage
-
-For batch analysis without the web UI:
-
-```bash
-META_INPUT_PATH=data/my_report.csv python meta_agent.py
-```
-
-| Variable | Default | Description |
-| --- | --- | --- |
-| `META_INPUT_PATH` | `data/meta_report.xlsx` | Input report path |
-| `META_OUTPUT_PATH` | `output/meta_ads_with_recommendations.csv` | Recommendations CSV |
-| `META_MODEL_NAME` | `gpt-5-mini` | OpenAI model for CLI analysis |
+### Upload + CLI
+- CSV/XLSX upload still supported
+- CLI batch mode: `META_INPUT_PATH=data/my_report.csv python meta_agent.py`
 
 ---
 
 ## Configuration
 
-| Variable | Default | Description |
-| --- | --- | --- |
-| `OPENAI_API_KEY` | — | Required. OpenAI API key |
-| `APP_PASSWORD` | — | Required for web app access |
-| `META_ANALYSIS_MODEL` | `gpt-4.1-mini` | Model for detailed dashboard analysis |
-| `META_CHAT_MODEL` | `gpt-4.1-mini` | Model for chat and chart insights |
-| `META_CURRENCY` | `₹` | Currency symbol in KPI cards |
+| Variable | Description |
+| --- | --- |
+| `APP_PASSWORD` | Required for login |
+| `OPENAI_API_KEY` | OpenAI / ChatGPT |
+| `ANTHROPIC_API_KEY` | Claude |
+| `GROK_API_KEY` / `XAI_API_KEY` | Grok |
+| `GEMINI_API_KEY` / `GOOGLE_API_KEY` | Gemini |
+| `META_ACCESS_TOKEN` | Optional default Meta Graph token |
+| `META_AD_ACCOUNT_ID` | Optional default ad account |
+| `META_CURRENCY` | Currency symbol (default `₹`) |
 
 ---
 
@@ -126,26 +94,21 @@ META_INPUT_PATH=data/my_report.csv python meta_agent.py
 
 ```
 meta-ai-agent/
-├── app.py                 # Streamlit product (web UI)
-├── meta_agent.py          # CLI entrypoint
+├── api/
+│   ├── main.py            # FastAPI app
+│   └── session.py         # In-memory sessions
+├── frontend/              # React dashboard (Vite)
 ├── meta_analyst/          # Core product package
-│   ├── config.py          # Environment-based settings
-│   ├── data.py            # Load, clean, summarize
-│   ├── analysis.py        # OpenAI integrations
-│   ├── charts.py          # KPIs and visualizations
-│   ├── pdf.py             # PDF report generation
-│   └── ui.py              # Streamlit theme and components
+│   ├── meta_api.py        # Meta Marketing / Reporting API
+│   ├── providers.py       # Multi-LLM providers
+│   ├── data.py            # Load / clean
+│   ├── analysis.py        # LLM analysis
+│   ├── charts.py          # KPI helpers (+ matplotlib for PDF)
+│   └── pdf.py             # PDF report generation
+├── meta_agent.py          # CLI entrypoint
 ├── .env.example
-├── .streamlit/config.toml
-├── requirements.txt
-└── RareBoxLogo.png
+└── requirements.txt
 ```
-
----
-
-## Dev Container
-
-The included `.devcontainer/` config runs Python 3.11, installs dependencies, and launches the Streamlit app on port `8501` in Codespaces or VS Code Dev Containers.
 
 ---
 
